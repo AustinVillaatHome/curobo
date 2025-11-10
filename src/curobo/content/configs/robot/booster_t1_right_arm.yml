@@ -1,0 +1,86 @@
+##
+## CuRobo Configuration for Booster T1 Humanoid - Right Arm (7 DOF)
+##
+
+robot_cfg:
+  kinematics:
+    use_usd_kinematics: False
+    usd_path: "/home/robocup/booster_robocup/source/humanoid_assets/data/urdf/t1/T1_7dof_arms_with_gripper/T1_7dof_arms_with_gripper.usd"
+    usd_robot_root: ""
+    isaac_usd_path: ""
+    usd_flip_joints: {}
+    usd_flip_joint_limits: []
+    urdf_path: "/home/robocup/booster_robocup/source/humanoid_assets/data/urdf/t1/T1_7dof_arms_with_gripper.urdf"
+    asset_root_path: "/home/robocup/booster_robocup/source/humanoid_assets/data/urdf/t1/"
+    
+    # Robot structure
+    base_link: "Trunk"
+    ee_link: "right_hand_link"
+    
+    link_names: null
+    lock_joints: null  # Only joints in the kinematic chain (Trunk->right_hand_link) can be locked
+    extra_links: null
+    
+    collision_link_names: null # List[str]
+    collision_spheres: null #
+    collision_sphere_buffer: 0.005 # float or Dict[str, float]
+    extra_collision_spheres: {}
+    
+    use_global_cumul: True
+    
+    mesh_link_names: null
+    external_asset_path: null
+    
+    
+    # Ignore collisions between adjacent links and trunk-arm connection
+    self_collision_ignore:
+      {
+        "Trunk": ["AR1", "AR2"],
+        "AR1": ["AR2", "AR3"],
+        "AR2": ["AR3", "AR4"],
+        "AR3": ["AR4", "AR5"],
+        "AR4": ["AR5", "AR6"],
+        "AR5": ["AR6", "right_hand_link"],
+        "AR6": ["right_hand_link", "right_base_link"],
+        "right_hand_link": ["right_base_link"],
+      }
+    
+    self_collision_buffer:
+      {
+        "Trunk": 0.1,
+        "AR1": 0.05,
+        "AR2": 0.02,
+        "AR3": 0.02,
+        "AR4": 0.02,
+        "AR5": 0.02,
+        "AR6": 0.01,
+        "right_hand_link": 0.01,
+        "right_base_link": 0.01,
+      }
+    
+    
+    
+    # Joint space configuration (7 DOF arm)
+    cspace:
+      joint_names: 
+        [
+          "Right_Shoulder_Pitch",
+          "Right_Shoulder_Roll",
+          "Right_Elbow_Pitch",
+          "Right_Elbow_Yaw",
+          "Right_Wrist_Pitch",
+          "Right_Wrist_Yaw",
+          "Right_Hand_Roll",
+        ]
+      
+      # Safe retract configuration (arms parallel to body from booster.py)
+      retract_config: [0.0, 1.569, 0.0, 0.0, 0.0, 0.0, 0.0]
+      
+      # Weights for null space and distance calculations
+      null_space_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+      cspace_distance_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+      
+      # Motion limits
+      max_acceleration: 15.0
+      max_jerk: 500.0
+

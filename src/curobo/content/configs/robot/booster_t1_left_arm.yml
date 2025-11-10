@@ -1,0 +1,200 @@
+##
+## CuRobo Configuration for Booster T1 Humanoid - Left Arm (7 DOF)
+##
+
+robot_cfg:
+  kinematics:
+    use_usd_kinematics: False
+    usd_path: "/home/robocup/booster_robocup/source/humanoid_assets/data/urdf/t1/T1_7dof_arms_with_gripper/T1_7dof_arms_with_gripper.usd"
+    usd_robot_root: ""
+    isaac_usd_path: ""
+    usd_flip_joints: {}
+    usd_flip_joint_limits: []
+    urdf_path: "/home/robocup/booster_robocup/source/humanoid_assets/data/urdf/t1/T1_7dof_arms_with_gripper.urdf"
+    asset_root_path: "/home/robocup/booster_robocup/source/humanoid_assets/data/urdf/t1/"
+    
+    # Robot structure
+    base_link: "Trunk"
+    ee_link: "left_hand_link"
+    
+    link_names: null
+    
+    # Lock all joints that are NOT part of the left arm kinematic chain
+    lock_joints:
+      {
+        # Head joints
+        "AAHead_yaw": 0.0,
+        "Head_pitch": 0.0,
+        
+        # Left hand gripper joints (keep closed/neutral)
+        "left_Link1": 0.5,
+        "left_Link11": -0.5,
+        "left_Link2": -0.5,
+        "left_Link22": 0.5,
+        
+        # Right arm joints (keep arm down at side)
+        "Right_Shoulder_Pitch": 0.0,
+        "Right_Shoulder_Roll": 1.57,
+        "Right_Elbow_Pitch": 0.0,
+        "Right_Elbow_Yaw": 0.0,
+        "Right_Wrist_Pitch": 0.0,
+        "Right_Wrist_Yaw": 0.0,
+        "Right_Hand_Roll": 0.0,
+        
+        # Right hand gripper joints
+        "right_Link1": 0.5,
+        "right_Link11": -0.5,
+        "right_Link2": -0.5,
+        "right_Link22": 0.5,
+        
+        # Waist joint
+        "Waist": 0.0,
+        
+        # Left leg joints (standing position)
+        "Left_Hip_Pitch": 0.0,
+        "Left_Hip_Roll": 0.0,
+        "Left_Hip_Yaw": 0.0,
+        "Left_Knee_Pitch": 0.0,
+        "Left_Ankle_Pitch": 0.0,
+        "Left_Ankle_Roll": 0.0,
+        
+        # Right leg joints (standing position)
+        "Right_Hip_Pitch": 0.0,
+        "Right_Hip_Roll": 0.0,
+        "Right_Hip_Yaw": 0.0,
+        "Right_Knee_Pitch": 0.0,
+        "Right_Ankle_Pitch": 0.0,
+        "Right_Ankle_Roll": 0.0,
+      }
+    
+    # Extra link for attached objects (e.g., objects held by gripper)
+    extra_links: 
+      {
+        "attached_object": 
+          {
+            "parent_link_name": "left_hand_link",
+            "link_name": "attached_object",
+            "fixed_transform": [0, 0, 0, 1, 0, 0, 0],  # [x, y, z, qw, qx, qy, qz]
+            "joint_type": "FIXED",
+            "joint_name": "attach_joint"
+          }
+      }
+    
+    collision_spheres: spheres/t1.yml
+    extra_collision_spheres: {"attached_object": 4}
+    collision_sphere_buffer: 0.005
+    
+    use_global_cumul: True
+    
+    mesh_link_names: null
+    external_asset_path: null
+
+    collision_link_names: ['Trunk', 'H1', 'H2', 'AL1', 'AL2', 'AL3', 'AL4', 'AL5', 'AL6', 'left_hand_link', 'left_base_link', 'left_Link1', 'left_Link11', 'left_Link2', 'left_Link22', 'AR1', 'AR2', 'AR3', 'AR4', 'AR5', 'AR6', 'right_hand_link', 'right_base_link', 'right_Link1', 'right_Link11', 'right_Link2', 'right_Link22', 'Waist', 'Hip_Pitch_Left', 'Hip_Roll_Left', 'Hip_Yaw_Left', 'Shank_Left', 'Ankle_Cross_Left', 'left_foot_link', 'Hip_Pitch_Right', 'Hip_Roll_Right', 'Hip_Yaw_Right','Shank_Right', 'Ankle_Cross_Right', 'right_foot_link']
+    
+    # Ignore self-collisions between adjacent/nearby links
+    self_collision_ignore:
+      {
+        "Trunk": ["H1", "H2", "Waist"],
+        "H1": ["H2", "AL1"],
+        "H2": ["AL1", "AL2"],
+        "AL1": ["AL2", "AL3"],
+        "AL2": ["AL3", "AL4"],
+        "AL3": ["AL4", "AL5"],
+        "AL4": ["AL5", "AL6"],
+        "AL5": ["AL6", "left_hand_link"],
+        "AL6": ["left_hand_link", "attached_object"],
+        "left_hand_link": ["attached_object", "left_base_link"],
+        "AR1": ["AR2", "AR3"],
+        "AR2": ["AR3", "AR4"],
+        "AR3": ["AR4", "AR5"],
+        "AR4": ["AR5", "AR6"],
+        "AR5": ["AR6", "right_hand_link"],
+        "AR6": ["right_hand_link"],
+        "Waist": ["Hip_Pitch_Left", "Hip_Pitch_Right"],
+        "Hip_Pitch_Left": ["Hip_Roll_Left"],
+        "Hip_Roll_Left": ["Hip_Yaw_Left"],
+        "Hip_Yaw_Left": ["Shank_Left"],
+        "Shank_Left": ["Ankle_Cross_Left"],
+        "Ankle_Cross_Left": ["left_foot_link"],
+        "Hip_Pitch_Right": ["Hip_Roll_Right"],
+        "Hip_Roll_Right": ["Hip_Yaw_Right"],
+        "Hip_Yaw_Right": ["Shank_Right"],
+        "Shank_Right": ["Ankle_Cross_Right"],
+        "Ankle_Cross_Right": ["right_foot_link"],
+      }
+
+    # Buffer distances for self-collision checking (0.0 means no extra buffer)
+    self_collision_buffer:
+      {
+        "Trunk": 0.02,
+        "H1": 0.01,
+        "H2": 0.01,
+        "AL1": 0.0,
+        "AL2": 0.0,
+        "AL3": 0.0,
+        "AL4": 0.0,
+        "AL5": 0.0,
+        "AL6": 0.0,
+        "left_hand_link": 0.0,
+        "left_base_link": 0.0,
+        "left_Link1": 0.0,
+        "left_Link11": 0.0,
+        "left_Link2": 0.0,
+        "left_Link22": 0.0,
+        "AR1": 0.0,
+        "AR2": 0.0,
+        "AR3": 0.0,
+        "AR4": 0.0,
+        "AR5": 0.0,
+        "AR6": 0.0,
+        "right_hand_link": 0.0,
+        "right_base_link": 0.0,
+        "right_Link1": 0.0,
+        "right_Link11": 0.0,
+        "right_Link2": 0.0,
+        "right_Link22": 0.0,
+        "Waist": 0.01,
+        "Hip_Pitch_Left": 0.0,
+        "Hip_Roll_Left": 0.0,
+        "Hip_Yaw_Left": 0.0,
+        "Shank_Left": 0.0,
+        "Ankle_Cross_Left": 0.0,
+        "left_foot_link": 0.0,
+        "Hip_Pitch_Right": 0.0,
+        "Hip_Roll_Right": 0.0,
+        "Hip_Yaw_Right": 0.0,
+        "Shank_Right": 0.0,
+        "Ankle_Cross_Right": 0.0,
+        "right_foot_link": 0.0,
+        "attached_object": 0.0,
+      }
+
+    use_global_cumul: True
+    mesh_link_names: null
+    external_asset_path: null
+
+    
+    # Joint space configuration (7 DOF arm)
+    cspace:
+      joint_names: 
+        [
+          "Left_Shoulder_Pitch",
+          "Left_Shoulder_Roll",
+          "Left_Elbow_Pitch",
+          "Left_Elbow_Yaw",
+          "Left_Wrist_Pitch",
+          "Left_Wrist_Yaw",
+          "Left_Hand_Roll",
+        ]
+      
+      # Safe retract configuration (arms parallel to body from booster.py)
+      retract_config: [0.0, -1.569, 0.0, 0.0, 0.0, 0.0, 0.0]
+      
+      # Weights for null space and distance calculations
+      null_space_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+      cspace_distance_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+      
+      # Motion limits
+      max_acceleration: 15.0
+      max_jerk: 500.0
+
