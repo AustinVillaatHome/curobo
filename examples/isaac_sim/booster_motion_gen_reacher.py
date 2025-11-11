@@ -242,6 +242,7 @@ def main():
     )
     motion_gen = MotionGen(motion_gen_config)
     
+    # Compute retract EE position for distance checking
     retract_state = JointState.from_position(
         tensor_args.to_device(default_config).unsqueeze(0),
         joint_names=j_names
@@ -249,18 +250,9 @@ def main():
     retract_state = retract_state.get_ordered_joint_state(motion_gen.kinematics.joint_names)
     kin_state = motion_gen.compute_kinematics(retract_state)
     retract_ee_pos = kin_state.ee_pos_seq.cpu().numpy()[0]
-    retract_ee_quat = kin_state.ee_quat_seq.cpu().numpy()[0]
-    
-    print(f"[DEBUG] Retract end-effector position (base frame): {retract_ee_pos}", file=sys.stderr, flush=True)
-    print(f"[DEBUG] Retract end-effector orientation: {retract_ee_quat}", file=sys.stderr, flush=True)
-    
-    # Default end-effector orientation: Use retract orientation as starting point
-    # With partial_ik_opt=True, the solver can relax orientation constraints
-    # This is better than a fixed orientation that might not match the robot's reachable space
-    default_ee_orientation = retract_ee_quat.copy()
     
     if not args.reactive:
-        motion_gen.warmup(enable_graph=False, warmup_js_trajopt=False)
+        motion_gen.warmup(enable_graph=True, warmup_js_trajopt=False)
 
     print("Curobo is Ready")
 
@@ -456,46 +448,18 @@ def main():
                 # Try to continue anyway - sometimes collision detection is conservative
                 # But log the issue for debugging
             
-            # Use retract orientation as starting point - partial_ik_opt=True and 
-            # reach_partial_pose=True with relaxed rotation weights allow the solver
-            # to find a reachable orientation even if exact match isn't possible
-            ee_orientation_teleop_goal = default_ee_orientation
+            ee_orientation_teleop_goal = cube_orientation
 
             ik_goal = Pose(
                 position=tensor_args.to_device(ee_translation_goal),
                 quaternion=tensor_args.to_device(ee_orientation_teleop_goal),
             )
             plan_config.pose_cost_metric = pose_metric
-            import time as time_module
-            plan_start_time = time_module.time()
-            print(f"[PLAN_DEBUG] Starting planning to target: {ee_translation_goal}", file=sys.stderr, flush=True)
             result = motion_gen.plan_single(cu_js.unsqueeze(0), ik_goal, plan_config)
-            plan_time = time_module.time() - plan_start_time
             # ik_result = ik_solver.solve_single(ik_goal, cu_js.position.view(1,-1), cu_js.position.view(1,1,-1))
 
             succ = result.success.item()
-            print(f"[PLAN_DEBUG] Planning completed in {plan_time:.2f}s: success={succ}, status={result.status}, valid_query={result.valid_query}", file=sys.stderr, flush=True)
-            if result.position_error is not None:
-                print(f"[PLAN_DEBUG] Position error: {result.position_error.item():.4f}m", file=sys.stderr, flush=True)
-            if result.rotation_error is not None:
-                print(f"[PLAN_DEBUG] Rotation error: {result.rotation_error.item():.4f}rad", file=sys.stderr, flush=True)
-            if not succ:
-                # Debug: print IK failure details
-                pos_err = result.position_error.item() if result.position_error is not None else None
-                rot_err = result.rotation_error.item() if result.rotation_error is not None else None
-                print(f"[IK_DEBUG] Plan failed. Status: {result.status}", file=sys.stderr, flush=True)
-                print(f"[IK_DEBUG] Valid query: {result.valid_query}", file=sys.stderr, flush=True)
-                if pos_err is not None:
-                    print(f"[IK_DEBUG] Position error: {pos_err:.4f}m", file=sys.stderr, flush=True)
-                if rot_err is not None:
-                    print(f"[IK_DEBUG] Rotation error: {rot_err:.4f}rad", file=sys.stderr, flush=True)
-                print(f"[IK_DEBUG] Target position (base frame): {ee_translation_goal}", file=sys.stderr, flush=True)
-                print(f"[IK_DEBUG] Current joint state: {cu_js.position.cpu().numpy()}", file=sys.stderr, flush=True)
-                
-                # Check if start state is valid
-                valid_start, start_status = motion_gen.check_start_state(cu_js.unsqueeze(0))
-                if not valid_start:
-                    print(f"[IK_DEBUG] Start state invalid: {start_status}", file=sys.stderr, flush=True)
+
             if num_targets == 1:
                 if args.constrain_grasp_approach:
                     pose_metric = PoseCostMetric.create_grasp_approach_metric()
@@ -525,27 +489,7 @@ def main():
                 num_targets += 1
                 cmd_plan_full = result.get_interpolated_plan()
                 cmd_plan_full = motion_gen.get_full_js(cmd_plan_full)
-                
-                # Verify end-effector actually moves - use full plan with all joints BEFORE filtering
-                if len(cmd_plan_full.position) > 0:
-                    first_js_full_plan = cmd_plan_full[0]
-                    last_js_full_plan = cmd_plan_full[-1]
-                    first_kin_full = motion_gen.compute_kinematics(first_js_full_plan.unsqueeze(0))
-                    last_kin_full = motion_gen.compute_kinematics(last_js_full_plan.unsqueeze(0))
-                    first_ee_pos_full = first_kin_full.ee_pos_seq[0].cpu().numpy()
-                    last_ee_pos_full = last_kin_full.ee_pos_seq[0].cpu().numpy()
-                    ee_movement_full = np.linalg.norm(last_ee_pos_full - first_ee_pos_full)
-                    target_ee_pos = ik_goal.position.cpu().numpy()
-                    target_dist_first = np.linalg.norm(first_ee_pos_full - target_ee_pos)
-                    target_dist_last = np.linalg.norm(last_ee_pos_full - target_ee_pos)
-                    print(f"[PLAN_DEBUG] EE position first (full plan): {first_ee_pos_full}", file=sys.stderr, flush=True)
-                    print(f"[PLAN_DEBUG] EE position last (full plan): {last_ee_pos_full}", file=sys.stderr, flush=True)
-                    print(f"[PLAN_DEBUG] Target EE position: {target_ee_pos}", file=sys.stderr, flush=True)
-                    print(f"[PLAN_DEBUG] EE movement distance: {ee_movement_full:.4f}m", file=sys.stderr, flush=True)
-                    print(f"[PLAN_DEBUG] Distance to target (first): {target_dist_first:.4f}m", file=sys.stderr, flush=True)
-                    print(f"[PLAN_DEBUG] Distance to target (last): {target_dist_last:.4f}m", file=sys.stderr, flush=True)
-                
-                # Only use controlled joints (left arm joints) for execution
+
                 idx_list = []
                 common_js_names = []
                 for x in j_names:  # Use j_names (controlled joints) instead of sim_js_names (all joints)
@@ -555,17 +499,7 @@ def main():
 
                 cmd_plan = cmd_plan_full.get_ordered_joint_state(common_js_names)
                 cmd_idx = 0
-                print(f"[PLAN_DEBUG] Plan ready: {len(cmd_plan.position)} steps, controlled joints: {common_js_names}", file=sys.stderr, flush=True)
-                print(f"[PLAN_DEBUG] Joint indices: {idx_list}", file=sys.stderr, flush=True)
-                if len(cmd_plan.position) > 0:
-                    first_joints = cmd_plan.position[0].cpu().numpy()
-                    last_joints = cmd_plan.position[-1].cpu().numpy()
-                    joint_diff = last_joints - first_joints
-                    print(f"[PLAN_DEBUG] First step joint values (controlled only): {first_joints}", file=sys.stderr, flush=True)
-                    print(f"[PLAN_DEBUG] Last step joint values (controlled only): {last_joints}", file=sys.stderr, flush=True)
-                    print(f"[PLAN_DEBUG] Joint change from first to last: {joint_diff}", file=sys.stderr, flush=True)
-                    print(f"[PLAN_DEBUG] Max joint change: {np.max(np.abs(joint_diff)):.6f} rad", file=sys.stderr, flush=True)
-
+            
             else:
                 carb.log_warn("Plan did not converge to a solution: " + str(result.status))
             target_pose = cube_position
@@ -579,14 +513,6 @@ def main():
             # get full dof state
             joint_positions = cmd_state.position.cpu().numpy()
             joint_velocities = cmd_state.velocity.cpu().numpy()
-            
-            # Debug: compare current state with command
-            if cmd_idx == 0 or cmd_idx == len(cmd_plan.position) - 1 or step_index % 100 == 0:
-                current_joint_positions = [sim_js.positions[robot.get_dof_index(j)] for j in j_names if j in robot.dof_names]
-                print(f"[EXEC_DEBUG] Step {cmd_idx}/{len(cmd_plan.position)}", file=sys.stderr, flush=True)
-                print(f"[EXEC_DEBUG] Current joints: {current_joint_positions}", file=sys.stderr, flush=True)
-                print(f"[EXEC_DEBUG] Command joints: {joint_positions}", file=sys.stderr, flush=True)
-                print(f"[EXEC_DEBUG] Joint diff: {np.array(joint_positions) - np.array(current_joint_positions)}", file=sys.stderr, flush=True)
             
             art_action = ArticulationAction(
                 joint_positions,
