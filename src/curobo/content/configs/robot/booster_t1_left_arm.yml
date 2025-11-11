@@ -67,21 +67,8 @@ robot_cfg:
         "Right_Ankle_Roll": 0.0,
       }
     
-    # Extra link for attached objects (e.g., objects held by gripper)
-    extra_links: 
-      {
-        "attached_object": 
-          {
-            "parent_link_name": "left_hand_link",
-            "link_name": "attached_object",
-            "fixed_transform": [0, 0, 0, 1, 0, 0, 0],  # [x, y, z, qw, qx, qy, qz]
-            "joint_type": "FIXED",
-            "joint_name": "attach_joint"
-          }
-      }
-    
     collision_spheres: spheres/t1.yml
-    extra_collision_spheres: {"attached_object": 4}
+    extra_collision_spheres: {}
     collision_sphere_buffer: 
       {
         "default": 0.0,  # No buffer by default
@@ -103,11 +90,6 @@ robot_cfg:
         "Shank_Left": -0.005,  # Reduce sphere size for leg
         "Shank_Right": -0.005,
       }
-    
-    use_global_cumul: True
-    
-    debug:
-      self_collision_experimental: False
     
     mesh_link_names: null
     external_asset_path: null
@@ -163,24 +145,23 @@ robot_cfg:
       }
 
     # Buffer distances for self-collision checking (0.0 means no extra buffer)
-    # Reduced buffers to allow more reachable space for IK
     self_collision_buffer:
       {
-        "Trunk": 0.0,  # Set to 0.0 to allow arm closer to torso (was 0.01)
-        "H1": 0.0,     # Set to 0.0 (was 0.005)
-        "H2": 0.0,     # Set to 0.0 (was 0.005)
-        "AL1": 0.0,
-        "AL2": 0.0,
-        "AL3": 0.0,
-        "AL4": 0.0,
-        "AL5": 0.0,
-        "AL6": 0.0,
-        "left_hand_link": 0.0,
-        "left_base_link": 0.0,
-        "left_Link1": 0.0,
-        "left_Link11": 0.0,
-        "left_Link2": 0.0,
-        "left_Link22": 0.0,
+        "Trunk": 0.002,  # Small buffer to prevent numerical precision issues
+        "H1": 0.001,     # Small buffer
+        "H2": 0.001,     # Small buffer
+        "AL1": 0.001,    # Small buffer for numerical stability
+        "AL2": 0.001,
+        "AL3": 0.001,
+        "AL4": 0.001,
+        "AL5": 0.001,
+        "AL6": 0.001,
+        "left_hand_link": 0.001,
+        "left_base_link": 0.001,
+        "left_Link1": 0.001,
+        "left_Link11": 0.001,
+        "left_Link2": 0.001,
+        "left_Link22": 0.001,
         "AR1": 0.0,
         "AR2": 0.0,
         "AR3": 0.0,
@@ -206,7 +187,6 @@ robot_cfg:
         "Shank_Right": 0.0,
         "Ankle_Cross_Right": 0.0,
         "right_foot_link": 0.0,
-        "attached_object": 0.0,
       }
 
     use_global_cumul: True
