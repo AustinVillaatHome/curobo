@@ -185,7 +185,6 @@ def main():
         robot_cfg["kinematics"]["external_robot_configs_path"] = args.external_robot_configs_path
     j_names = robot_cfg["kinematics"]["cspace"]["joint_names"]
     default_config = robot_cfg["kinematics"]["cspace"]["retract_config"]
-    lock_joints = robot_cfg["kinematics"].get("lock_joints", {})
 
     # MODIFIED: Spawn robot at specified height (default 0.7 for Booster T1)
     print(f"[DEBUG] Spawning robot at height {args.robot_height}...")
@@ -293,7 +292,7 @@ def main():
     # reach_vec: [pos_x, pos_y, pos_z, rot_x, rot_y, rot_z]
     # Set rotation weights to 0.0 for position-only IK - orientation will be ignored
     # This allows IK to succeed even when exact orientation match is impossible
-    reach_vec = tensor_args.to_device([1.0, 1.0, 1.0, 0.0, 0.0, 0.0])  # Position-only IK
+    reach_vec = tensor_args.to_device([0.0, 0.0, 0.0, 1.0, 1.0, 1.0])  # Position-only IK
     pose_metric = PoseCostMetric(reach_partial_pose=True, reach_vec_weight=reach_vec)
     while simulation_app.is_running():
         my_world.step(render=True)
@@ -313,38 +312,16 @@ def main():
             # Set controlled left arm joints
             idx_list = [robot.get_dof_index(x) for x in j_names]
             robot.set_joint_positions(default_config, idx_list)
-            # robot.set_joint_velocities(np.zeros(len(idx_list)), idx_list)
-            
-            # Also set locked joints to their locked positions
-            locked_idx_list = []
-            locked_positions = []
-            # for joint_name, locked_pos in lock_joints.items():
-            #     if joint_name in robot.dof_names:
-            #         locked_idx_list.append(robot.get_dof_index(joint_name))
-            #         locked_positions.append(locked_pos)
-            # if locked_idx_list:
-            #     robot.set_joint_positions(locked_positions, locked_idx_list)
-            #     robot.set_joint_velocities(np.zeros(len(locked_idx_list)), locked_idx_list)
-            
+
             print(f"[INIT] Setting initial joint positions:", file=sys.stderr, flush=True)
             print(f"  Controlled joints: {j_names}", file=sys.stderr, flush=True)
             print(f"  Controlled config: {default_config}", file=sys.stderr, flush=True)
-            print(f"  Locked {len(locked_idx_list)} other joints", file=sys.stderr, flush=True)
 
             # Set high effort limits for controlled joints
             robot._articulation_view.set_max_efforts(
                 values=np.array([5000 for i in range(len(idx_list))]), joint_indices=idx_list
             )
-            # Set high effort limits for locked joints too
-            if locked_idx_list:
-                robot._articulation_view.set_max_efforts(
-                    values=np.array([5000 for i in range(len(locked_idx_list))]), joint_indices=locked_idx_list
-                )
         if step_index < 20:
-            # Continue to set velocities to zero during early steps
-            # if articulation_controller is not None:
-            #     idx_list = [robot.get_dof_index(x) for x in j_names]
-            #     robot.set_joint_velocities(np.zeros(len(idx_list)), idx_list)
             continue
         
         # Hold position for a few more steps to ensure robot is fully settled
@@ -357,21 +334,6 @@ def main():
                 joint_indices=idx_list,
             )
             articulation_controller.apply_action(art_action)
-            
-            # Hold locked joints
-            locked_idx_list = []
-            locked_positions = []
-            for joint_name, locked_pos in lock_joints.items():
-                if joint_name in robot.dof_names:
-                    locked_idx_list.append(robot.get_dof_index(joint_name))
-                    locked_positions.append(locked_pos)
-            if locked_idx_list:
-                locked_action = ArticulationAction(
-                    np.array(locked_positions),
-                    np.zeros(len(locked_positions)),
-                    joint_indices=locked_idx_list,
-                )
-                articulation_controller.apply_action(locked_action)
             
             if step_index == 49:
                 print(f"[INIT] Initialization complete, robot should be static now", file=sys.stderr, flush=True)
@@ -402,6 +364,10 @@ def main():
 
         if past_pose is None:
             past_pose = cube_position
+        if target_pose is None:
+            target_pose = cube_position
+        if target_orientation is None:
+            target_orientation = cube_orientation
         if past_orientation is None:
             past_orientation = cube_orientation
 
@@ -467,20 +433,15 @@ def main():
         if (np.max(np.abs(controlled_joint_velocities)) < 0.5) or args.reactive:
             robot_static = True
         
-        target_changed = (target_pose is None or target_orientation is None or
-                         np.linalg.norm(cube_position - target_pose) > 1e-3 or
-                         np.linalg.norm(cube_orientation - target_orientation) > 1e-3)
-        cube_static = (np.linalg.norm(past_pose - cube_position) == 0.0 and
-                      np.linalg.norm(past_orientation - cube_orientation) == 0.0)
-        
-        should_plan = target_changed and cube_static and robot_static
-        
-        if step_index % 100 == 0:  # Debug every 100 steps
-            print(f"[PLAN_CONDITION] target_changed={target_changed}, cube_static={cube_static}, robot_static={robot_static}, should_plan={should_plan}", file=sys.stderr, flush=True)
-            if target_pose is not None:
-                print(f"[PLAN_CONDITION] target_pose={target_pose}, cube_position={cube_position}, diff={np.linalg.norm(cube_position - target_pose)}", file=sys.stderr, flush=True)
-        
-        if should_plan:
+        if (
+            (
+                np.linalg.norm(cube_position - target_pose) > 1e-3
+                or np.linalg.norm(cube_orientation - target_orientation) > 1e-3
+            )
+            and np.linalg.norm(past_pose - cube_position) == 0.0
+            and np.linalg.norm(past_orientation - cube_orientation) == 0.0
+            and robot_static
+        ):
             ee_translation_goal = cube_position_base_frame
             
             # Check if target is too far from retract position
@@ -504,8 +465,7 @@ def main():
                 position=tensor_args.to_device(ee_translation_goal),
                 quaternion=tensor_args.to_device(ee_orientation_teleop_goal),
             )
-            # Don't set pose_cost_metric - let it use default to ensure it actually reaches the goal
-            # plan_config.pose_cost_metric = pose_metric
+            plan_config.pose_cost_metric = pose_metric
             import time as time_module
             plan_start_time = time_module.time()
             print(f"[PLAN_DEBUG] Starting planning to target: {ee_translation_goal}", file=sys.stderr, flush=True)
@@ -610,21 +570,6 @@ def main():
                 carb.log_warn("Plan did not converge to a solution: " + str(result.status))
             target_pose = cube_position
             target_orientation = cube_orientation
-        
-        # Always hold locked joints in place (legs, right arm, head, etc.)
-        locked_idx_list = []
-        locked_positions = []
-        for joint_name, locked_pos in lock_joints.items():
-            if joint_name in robot.dof_names:
-                locked_idx_list.append(robot.get_dof_index(joint_name))
-                locked_positions.append(locked_pos)
-        if locked_idx_list:
-            locked_action = ArticulationAction(
-                np.array(locked_positions),
-                np.zeros(len(locked_positions)),
-                joint_indices=locked_idx_list,
-            )
-            articulation_controller.apply_action(locked_action)
         
         past_pose = cube_position
         past_orientation = cube_orientation
