@@ -15,7 +15,7 @@ robot_cfg:
     
     # Robot structure
     base_link: "Trunk"
-    ee_link: "left_hand_link"
+    ee_link: "left_base_link"
     
     link_names: null
     
@@ -34,7 +34,7 @@ robot_cfg:
         
         # Right arm joints (keep arm down at side)
         "Right_Shoulder_Pitch": 0.0,
-        "Right_Shoulder_Roll": 1.57,
+        "Right_Shoulder_Roll": 0.0,
         "Right_Elbow_Pitch": 0.0,
         "Right_Elbow_Yaw": 0.0,
         "Right_Wrist_Pitch": 0.0,
@@ -82,53 +82,93 @@ robot_cfg:
     
     collision_spheres: spheres/t1.yml
     extra_collision_spheres: {"attached_object": 4}
-    collision_sphere_buffer: 0.005
+    collision_sphere_buffer: 
+      {
+        "default": 0.0,  # No buffer by default
+        "left_hand_link": -0.01,  # Reduce sphere size for hand
+        "left_base_link": -0.01,  # Reduce sphere size for gripper base
+        "left_Link1": -0.002,  # Reduce sphere size for gripper links
+        "left_Link11": -0.002,
+        "left_Link2": -0.002,
+        "left_Link22": -0.002,
+        "right_hand_link": -0.01,  # Reduce sphere size for right hand
+        "right_base_link": -0.01,
+        "right_Link1": -0.002,
+        "right_Link11": -0.002,
+        "right_Link2": -0.002,
+        "right_Link22": -0.002,
+        "AL4": -0.005,  # Reduce sphere size for lower arm links
+        "AL5": -0.005,
+        "AL6": -0.005,
+        "Shank_Left": -0.005,  # Reduce sphere size for leg
+        "Shank_Right": -0.005,
+      }
     
     use_global_cumul: True
+    
+    debug:
+      self_collision_experimental: False
     
     mesh_link_names: null
     external_asset_path: null
 
     collision_link_names: ['Trunk', 'H1', 'H2', 'AL1', 'AL2', 'AL3', 'AL4', 'AL5', 'AL6', 'left_hand_link', 'left_base_link', 'left_Link1', 'left_Link11', 'left_Link2', 'left_Link22', 'AR1', 'AR2', 'AR3', 'AR4', 'AR5', 'AR6', 'right_hand_link', 'right_base_link', 'right_Link1', 'right_Link11', 'right_Link2', 'right_Link22', 'Waist', 'Hip_Pitch_Left', 'Hip_Roll_Left', 'Hip_Yaw_Left', 'Shank_Left', 'Ankle_Cross_Left', 'left_foot_link', 'Hip_Pitch_Right', 'Hip_Roll_Right', 'Hip_Yaw_Right','Shank_Right', 'Ankle_Cross_Right', 'right_foot_link']
     
-    # Ignore self-collisions between adjacent/nearby links
     self_collision_ignore:
       {
-        "Trunk": ["H1", "H2", "Waist"],
-        "H1": ["H2", "AL1"],
-        "H2": ["AL1", "AL2"],
-        "AL1": ["AL2", "AL3"],
-        "AL2": ["AL3", "AL4"],
-        "AL3": ["AL4", "AL5"],
-        "AL4": ["AL5", "AL6"],
-        "AL5": ["AL6", "left_hand_link"],
-        "AL6": ["left_hand_link", "attached_object"],
-        "left_hand_link": ["attached_object", "left_base_link"],
-        "AR1": ["AR2", "AR3"],
-        "AR2": ["AR3", "AR4"],
-        "AR3": ["AR4", "AR5"],
-        "AR4": ["AR5", "AR6"],
-        "AR5": ["AR6", "right_hand_link"],
-        "AR6": ["right_hand_link"],
-        "Waist": ["Hip_Pitch_Left", "Hip_Pitch_Right"],
-        "Hip_Pitch_Left": ["Hip_Roll_Left"],
-        "Hip_Roll_Left": ["Hip_Yaw_Left"],
-        "Hip_Yaw_Left": ["Shank_Left"],
-        "Shank_Left": ["Ankle_Cross_Left"],
+        "Trunk": ["H1", "H2", "Waist", "AL1", "AL2", "AL3", "AL4", "AR1", "AR2", "AL5", "AL6"],
+        "H1": ["H2", "AL1", "AL2", "AL3", "Trunk"],
+        "H2": ["AL1", "AL2", "AL3", "AL4", "H1", "Trunk"],
+        "Waist": ["AL1", "AL2", "AL3", "AL4", "Hip_Pitch_Left", "Hip_Pitch_Right", "Hip_Roll_Left", "Hip_Roll_Right"],
+        "AL1": ["AL2", "AL3", "AL4", "Waist", "Trunk", "H1", "H2"],
+        "AL2": ["AL3", "AL4", "AL5", "Waist", "Trunk", "H1", "H2"],
+        "AL3": ["AL4", "AL5", "AL6", "Waist", "Trunk", "H1", "H2"],
+        "AL4": ["AL5", "AL6", "left_hand_link", "Waist", "Trunk", "Hip_Pitch_Left"],
+        "AL5": ["AL6", "left_hand_link", "Trunk", "Hip_Pitch_Left", "Hip_Roll_Left"],
+        "AL6": ["left_hand_link", "attached_object", "Trunk", "Hip_Pitch_Left", "Hip_Roll_Left", "Hip_Yaw_Left", "left_base_link"],
+        "left_hand_link": ["attached_object", "left_base_link", "Trunk", "Hip_Yaw_Left", "Hip_Roll_Left", "Hip_Pitch_Left", "Shank_Left", "left_Link1", "left_Link11", "left_Link2", "left_Link22", "AL6"],
+        "left_base_link": ["left_Link1", "left_Link11", "left_Link2", "left_Link22", "AL5", "AL6", "left_hand_link", "Hip_Yaw_Left", "Shank_Left"],
+        "left_Link1": ["left_Link11", "left_Link2", "left_Link22", "left_base_link", "left_hand_link", "Hip_Yaw_Left", "Shank_Left"],
+        "left_Link11": ["left_Link1", "left_Link2", "left_Link22", "left_base_link", "left_hand_link", "Shank_Left", "Hip_Yaw_Left"],
+        "left_Link2": ["left_Link22", "left_base_link", "left_hand_link", "Hip_Yaw_Left", "Shank_Left"],
+        "left_Link22": ["left_Link2", "left_base_link", "Shank_Left"],
+        # Right arm (locked) - allow left arm to pass near it when reaching across
+        "AR1": ["AR2", "AR3", "AL1", "AL2", "AL3"],
+        "AR2": ["AR3", "AR4", "AL2", "AL3", "AL4"],
+        "AR3": ["AR4", "AR5", "AL3", "AL4", "AL5"],
+        "AR4": ["AR5", "AR6", "AL4", "AL5", "AL6"],
+        "AR5": ["AR6", "right_hand_link", "AL5", "AL6"],
+        "AR6": ["right_hand_link", "AL6", "right_base_link"],
+        "right_hand_link": ["AL5", "AL6", "left_hand_link", "right_base_link", "right_Link1", "right_Link11", "right_Link2", "right_Link22"],
+        "right_base_link": ["right_hand_link", "right_Link1", "right_Link11", "right_Link2", "right_Link22", "AR6"],
+        "right_Link1": ["right_Link11", "right_Link2", "right_Link22", "right_base_link", "right_hand_link"],
+        "right_Link11": ["right_Link1", "right_Link2", "right_Link22", "right_base_link", "right_hand_link"],
+        "right_Link2": ["right_Link22", "right_base_link", "right_hand_link"],
+        "right_Link22": ["right_Link2", "right_base_link"],
+        "Hip_Pitch_Left": ["Hip_Roll_Left", "Hip_Yaw_Left"],
+        "Hip_Roll_Left": ["Hip_Yaw_Left", "Hip_Pitch_Left", "Waist"],
+        "Hip_Yaw_Left": ["Shank_Left", "Hip_Roll_Left", "Hip_Pitch_Left", "left_Link1", "left_Link11", "left_Link2", "left_Link22"],
+        "Shank_Left": ["Ankle_Cross_Left", "left_foot_link", "Hip_Yaw_Left", "left_Link1", "left_Link2", "left_Link22"],
         "Ankle_Cross_Left": ["left_foot_link"],
-        "Hip_Pitch_Right": ["Hip_Roll_Right"],
-        "Hip_Roll_Right": ["Hip_Yaw_Right"],
-        "Hip_Yaw_Right": ["Shank_Right"],
-        "Shank_Right": ["Ankle_Cross_Right"],
+        "left_foot_link": ["Shank_Left"],
+        "Hip_Pitch_Right": ["Hip_Roll_Right", "Hip_Yaw_Right"],
+        "Hip_Roll_Right": ["Hip_Yaw_Right", "Hip_Pitch_Right", "Waist"],
+        "Hip_Yaw_Right": ["Shank_Right", "Hip_Roll_Right", "Hip_Pitch_Right"],
+        "Shank_Right": ["Ankle_Cross_Right", "right_foot_link", "Hip_Yaw_Right"],
         "Ankle_Cross_Right": ["right_foot_link"],
+        "right_foot_link": ["Shank_Right"],
+        "AR3": ["AR4", "AR5"],
+        "AR4": ["AR3", "AR5", "AR6"],
+        "AR6": ["right_hand_link", "AR4", "AR5"],
       }
 
     # Buffer distances for self-collision checking (0.0 means no extra buffer)
+    # Reduced buffers to allow more reachable space for IK
     self_collision_buffer:
       {
-        "Trunk": 0.02,
-        "H1": 0.01,
-        "H2": 0.01,
+        "Trunk": 0.0,  # Set to 0.0 to allow arm closer to torso (was 0.01)
+        "H1": 0.0,     # Set to 0.0 (was 0.005)
+        "H2": 0.0,     # Set to 0.0 (was 0.005)
         "AL1": 0.0,
         "AL2": 0.0,
         "AL3": 0.0,
@@ -153,7 +193,7 @@ robot_cfg:
         "right_Link11": 0.0,
         "right_Link2": 0.0,
         "right_Link22": 0.0,
-        "Waist": 0.01,
+        "Waist": 0.0,  # Set to 0.0 (was 0.005)
         "Hip_Pitch_Left": 0.0,
         "Hip_Roll_Left": 0.0,
         "Hip_Yaw_Left": 0.0,
@@ -186,11 +226,7 @@ robot_cfg:
           "Left_Wrist_Yaw",
           "Left_Hand_Roll",
         ]
-      
-      # Safe retract configuration (arms parallel to body from booster.py)
-      retract_config: [0.0, -1.569, 0.0, 0.0, 0.0, 0.0, 0.0]
-      
-      # Weights for null space and distance calculations
+      retract_config: [0.0, -1.2, 0.0, 0.0, 0.0, 0.0, 0.0]  # Reduced shoulder roll from -1.569 to -1.2 to avoid collision
       null_space_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
       cspace_distance_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
       

@@ -45,7 +45,7 @@ cspace_to_urdf_rules:
     
     # Right arm joints (keep arm down at side)
     - {name: Right_Shoulder_Pitch, rule: fixed, value: 0.0}
-    - {name: Right_Shoulder_Roll, rule: fixed, value: 1.57}
+    - {name: Right_Shoulder_Roll, rule: fixed, value: 0.0}
     - {name: Right_Elbow_Pitch, rule: fixed, value: 0.0}
     - {name: Right_Elbow_Yaw, rule: fixed, value: 0.0}
     - {name: Right_Wrist_Pitch, rule: fixed, value: 0.0}
