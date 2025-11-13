@@ -137,8 +137,140 @@ from curobo.wrap.reacher.motion_gen import (
     MotionGen,
     MotionGenConfig,
     MotionGenPlanConfig,
+    MotionGenStatus,
     PoseCostMetric,
 )
+
+def print_collision_details(motion_gen, cu_js, robot_cfg_dict=None, context="Collision"):
+    """Print detailed collision information for debugging.
+    
+    Args:
+        motion_gen: MotionGen instance
+        cu_js: JointState with the current joint configuration
+        context: String describing the context (for logging)
+    """
+    # Compute kinematics to get sphere positions
+    kin_state = motion_gen.compute_kinematics(cu_js.unsqueeze(0))
+    # robot_spheres shape: [batch, horizon, n_spheres, 4] or [batch, n_spheres, 4]
+    # where 4 is [x, y, z, radius]
+    if kin_state.robot_spheres is None:
+        print(f"[COLLISION_DEBUG] {context} - robot_spheres is None, cannot compute collision details", file=sys.stderr, flush=True)
+        return
+    
+    spheres = kin_state.robot_spheres
+    # Handle different shapes: [batch, horizon, n_spheres, 4] or [batch, n_spheres, 4]
+    if len(spheres.shape) == 4:
+        spheres = spheres[0, 0]  # Take first batch, first horizon step
+    elif len(spheres.shape) == 3:
+        spheres = spheres[0]  # Take first batch
+    else:
+        print(f"[COLLISION_DEBUG] {context} - Unexpected robot_spheres shape: {spheres.shape}", file=sys.stderr, flush=True)
+        return
+    
+    # Get mappings
+    kin_config = motion_gen.kinematics.kinematics_config
+    link_sphere_idx_map = kin_config.link_sphere_idx_map.cpu().numpy()  # Maps sphere idx -> link idx
+    link_name_to_idx_map = kin_config.link_name_to_idx_map  # Maps link name -> link idx
+    idx_to_link_name = {v: k for k, v in link_name_to_idx_map.items()}  # Maps link idx -> link name
+    
+    # Get self-collision ignore dictionary (bidirectional mapping)
+    # Format: {link1: [link2, link3], ...} means link1 ignores collisions with link2 and link3
+    self_collision_ignore = {}
+    if robot_cfg_dict is not None and "kinematics" in robot_cfg_dict:
+        self_collision_ignore = robot_cfg_dict["kinematics"].get("self_collision_ignore", {})
+    if self_collision_ignore is None:
+        self_collision_ignore = {}
+    
+    # Create a set of ignored pairs for fast lookup
+    ignored_pairs = set()
+    for link1, ignore_list in self_collision_ignore.items():
+        for link2 in ignore_list:
+            # Add both directions since mapping is bidirectional
+            ignored_pairs.add((link1, link2))
+            ignored_pairs.add((link2, link1))
+    
+    # Get number of spheres
+    n_spheres = spheres.shape[0]
+    
+    # Get self-collision configuration
+    self_coll_config = motion_gen.kinematics.get_self_collision_config()
+    self_collision_offset = self_coll_config.offset.cpu().numpy() if self_coll_config.offset is not None else np.zeros(n_spheres)
+    
+    # Get collision matrix (may be None if experimental kernel is used)
+    collision_matrix = None
+    if self_coll_config.collision_matrix is not None:
+        collision_matrix = self_coll_config.collision_matrix.cpu().numpy()
+        # Collision matrix is stored as flattened 1D array: [n_spheres * n_spheres]
+        # Access as collision_matrix[i * n_spheres + j]
+        n_spheres_sq = collision_matrix.shape[0]
+        n_spheres_from_matrix = int(np.sqrt(n_spheres_sq))
+        if n_spheres_from_matrix * n_spheres_from_matrix != n_spheres_sq:
+            print(f"[COLLISION_DEBUG] {context} - Warning: collision_matrix shape {collision_matrix.shape} doesn't match expected square", file=sys.stderr, flush=True)
+            collision_matrix = None
+    
+    # Find colliding sphere pairs
+    colliding_pairs = []
+    
+    for i in range(n_spheres):
+        for j in range(i + 1, n_spheres):
+            # Check if these spheres should be checked for collision
+            # If collision_matrix is None (experimental kernel), check all pairs
+            if collision_matrix is not None:
+                # Access flattened matrix: collision_matrix[i * n_spheres + j]
+                if collision_matrix[i * n_spheres + j] == 0:
+                    continue
+            
+            # Get sphere positions and radii
+            sph1_pos = spheres[i, :3].cpu().numpy()
+            sph1_rad = spheres[i, 3].item() + self_collision_offset[i]
+            sph2_pos = spheres[j, :3].cpu().numpy()
+            sph2_rad = spheres[j, 3].item() + self_collision_offset[j]
+            
+            # Compute distance between sphere centers
+            dist = np.linalg.norm(sph1_pos - sph2_pos)
+            
+            # Check if spheres are colliding (distance < sum of radii)
+            min_dist = sph1_rad + sph2_rad
+            if dist < min_dist:
+                # Get link names for these spheres
+                link1_idx = link_sphere_idx_map[i]
+                link2_idx = link_sphere_idx_map[j]
+                link1_name = idx_to_link_name.get(link1_idx, f"link_{link1_idx}")
+                link2_name = idx_to_link_name.get(link2_idx, f"link_{link2_idx}")
+                
+                # Skip if both spheres belong to the same link (spheres within same link shouldn't collide)
+                if link1_name == link2_name:
+                    continue
+                
+                # Skip if this pair is in the collision ignore list
+                if (link1_name, link2_name) in ignored_pairs:
+                    continue
+                
+                penetration = min_dist - dist
+                colliding_pairs.append({
+                    'link1': link1_name,
+                    'link2': link2_name,
+                    'sphere1_idx': i,
+                    'sphere2_idx': j,
+                    'penetration': penetration,
+                    'distance': dist,
+                    'min_distance': min_dist,
+                    'sph1_pos': sph1_pos,
+                    'sph2_pos': sph2_pos,
+                    'sph1_rad': sph1_rad,
+                    'sph2_rad': sph2_rad,
+                })
+    
+    # Print collision details
+    if colliding_pairs:
+        print(f"[COLLISION_DEBUG] {context} - Found {len(colliding_pairs)} colliding sphere pairs:", file=sys.stderr, flush=True)
+        for pair in colliding_pairs:
+            print(f"  - {pair['link1']} (sphere {pair['sphere1_idx']}) <-> {pair['link2']} (sphere {pair['sphere2_idx']})", file=sys.stderr, flush=True)
+            print(f"    Penetration: {pair['penetration']:.6f}m, Distance: {pair['distance']:.6f}m, Min required: {pair['min_distance']:.6f}m", file=sys.stderr, flush=True)
+            print(f"    Sphere1: pos={pair['sph1_pos']}, rad={pair['sph1_rad']:.6f}m", file=sys.stderr, flush=True)
+            print(f"    Sphere2: pos={pair['sph2_pos']}, rad={pair['sph2_rad']:.6f}m", file=sys.stderr, flush=True)
+    else:
+        print(f"[COLLISION_DEBUG] {context} - No colliding pairs found manually - collision may be detected by constraint system", file=sys.stderr, flush=True)
 
 def main():
     num_targets = 0
@@ -244,6 +376,23 @@ def main():
         motion_gen.warmup(enable_graph=True, warmup_js_trajopt=False)
 
     print("Curobo is Ready")
+    
+    # Print collision checking parameters for debugging
+    print("\n[COLLISION_CONFIG] Collision checking parameters:")
+    if hasattr(motion_gen.rollout_fn, 'robot_self_collision_constraint'):
+        if hasattr(motion_gen.rollout_fn.robot_self_collision_constraint, 'activation_distance'):
+            print(f"  Self-collision activation distance: {motion_gen.rollout_fn.robot_self_collision_constraint.activation_distance}")
+        if hasattr(motion_gen.rollout_fn.robot_self_collision_constraint, 'weight'):
+            print(f"  Self-collision weight: {motion_gen.rollout_fn.robot_self_collision_constraint.weight}")
+    if hasattr(motion_gen.rollout_fn, 'primitive_collision_constraint'):
+        if hasattr(motion_gen.rollout_fn.primitive_collision_constraint, 'activation_distance'):
+            print(f"  World collision activation distance: {motion_gen.rollout_fn.primitive_collision_constraint.activation_distance}")
+    
+    # Check if experimental kernel is being used
+    self_coll_config = motion_gen.kinematics.get_self_collision_config()
+    print(f"  Using experimental self-collision kernel: {self_coll_config.experimental_kernel}")
+    print(f"  Total spheres: {motion_gen.kinematics.kinematics_config.total_spheres}")
+    print()
 
     add_extensions(simulation_app, args.headless_mode)
 
@@ -408,6 +557,11 @@ def main():
             if not valid_start:
                 print(f"[COLLISION_DEBUG] Start state invalid BEFORE planning: {start_status}", file=sys.stderr, flush=True)
                 print(f"[COLLISION_DEBUG] Start joint state: {cu_js.position.cpu().numpy()}", file=sys.stderr, flush=True)
+                
+                # Get detailed collision information
+                if start_status == MotionGenStatus.INVALID_START_STATE_SELF_COLLISION:
+                    print_collision_details(motion_gen, cu_js, robot_cfg, "Start state invalid BEFORE planning")
+                
                 # Try to continue anyway - sometimes collision detection is conservative
                 # But log the issue for debugging
             
@@ -439,7 +593,7 @@ def main():
                 print(f"[PLAN_DEBUG] Target pose: position={ik_goal.position.cpu().numpy()}, quaternion={ik_goal.quaternion.cpu().numpy()}", file=sys.stderr, flush=True)
                 print(f"[PLAN_DEBUG] Position error from result: {result.position_error.item() if result.position_error is not None else 'None'}m", file=sys.stderr, flush=True)
                 
-                # Check optimized plan first
+                # Check optimized plan for collisions
                 if result.optimized_plan is not None:
                     opt_plan = result.optimized_plan
                     if len(opt_plan.position) > 0:
@@ -448,10 +602,45 @@ def main():
                         print(f"[PLAN_DEBUG] Optimized plan: {len(opt_plan.position)} steps", file=sys.stderr, flush=True)
                         print(f"[PLAN_DEBUG] Optimized first joints: {opt_first}", file=sys.stderr, flush=True)
                         print(f"[PLAN_DEBUG] Optimized last joints: {opt_last}", file=sys.stderr, flush=True)
+                        
+                        # Check for collisions in optimized waypoints
+                        print(f"[COLLISION_CHECK] Checking optimized waypoints for collisions...", file=sys.stderr, flush=True)
+                        for waypoint_idx in [0, len(opt_plan.position) - 1]:  # Check first and last
+                            waypoint_js = JointState(
+                                position=opt_plan.position[waypoint_idx].unsqueeze(0),
+                                joint_names=motion_gen.kinematics.joint_names
+                            )
+                            waypoint_valid, waypoint_status = motion_gen.check_start_state(waypoint_js)
+                            if not waypoint_valid:
+                                print(f"[COLLISION_CHECK] Waypoint {waypoint_idx} has collision: {waypoint_status}", file=sys.stderr, flush=True)
+                                if waypoint_status == MotionGenStatus.INVALID_START_STATE_SELF_COLLISION:
+                                    print_collision_details(motion_gen, waypoint_js.position.squeeze(0), robot_cfg, f"Optimized waypoint {waypoint_idx}")
+                            else:
+                                print(f"[COLLISION_CHECK] Waypoint {waypoint_idx} is collision-free", file=sys.stderr, flush=True)
                 
                 num_targets += 1
                 cmd_plan_full = result.get_interpolated_plan()
                 cmd_plan_full = motion_gen.get_full_js(cmd_plan_full)
+                
+                # Check for collisions in interpolated trajectory
+                print(f"[COLLISION_CHECK] Checking interpolated trajectory ({len(cmd_plan_full.position)} steps)...", file=sys.stderr, flush=True)
+                collision_found_in_interpolation = False
+                for interp_idx in range(0, len(cmd_plan_full.position), max(1, len(cmd_plan_full.position) // 10)):  # Check 10 points
+                    interp_js = JointState(
+                        position=cmd_plan_full.position[interp_idx].unsqueeze(0),
+                        joint_names=cmd_plan_full.joint_names
+                    )
+                    # Reorder to match motion_gen joint names
+                    interp_js_ordered = interp_js.get_ordered_joint_state(motion_gen.kinematics.joint_names)
+                    interp_valid, interp_status = motion_gen.check_start_state(interp_js_ordered)
+                    if not interp_valid:
+                        if not collision_found_in_interpolation:
+                            print(f"[COLLISION_CHECK] COLLISION found in interpolated step {interp_idx}/{len(cmd_plan_full.position)}: {interp_status}", file=sys.stderr, flush=True)
+                            if interp_status == MotionGenStatus.INVALID_START_STATE_SELF_COLLISION:
+                                print_collision_details(motion_gen, interp_js_ordered.position.squeeze(0), robot_cfg, f"Interpolated step {interp_idx}")
+                            collision_found_in_interpolation = True
+                if not collision_found_in_interpolation:
+                    print(f"[COLLISION_CHECK] No collisions found in sampled interpolated trajectory", file=sys.stderr, flush=True)
 
                 idx_list = []
                 common_js_names = []
@@ -465,6 +654,10 @@ def main():
             
             else:
                 carb.log_warn("Plan did not converge to a solution: " + str(result.status))
+                
+                # Print detailed collision information if it's a self-collision error
+                if result.status == MotionGenStatus.INVALID_START_STATE_SELF_COLLISION:
+                    print_collision_details(motion_gen, cu_js, robot_cfg, "Plan failed")
             target_pose = cube_position
             target_orientation = cube_orientation
         
@@ -472,6 +665,20 @@ def main():
         past_orientation = cube_orientation
         if cmd_plan is not None:
             cmd_state = cmd_plan[cmd_idx]
+            
+            # Check current execution state for collisions
+            if cmd_idx % 50 == 0:  # Check every 50 steps
+                check_js = JointState(
+                    position=cmd_state.position.unsqueeze(0),
+                    joint_names=cmd_plan.joint_names
+                )
+                check_js_ordered = check_js.get_ordered_joint_state(motion_gen.kinematics.joint_names)
+                exec_valid, exec_status = motion_gen.check_start_state(check_js_ordered)
+                if not exec_valid:
+                    print(f"[EXECUTION_CHECK] Step {cmd_idx}/{len(cmd_plan.position)}: Collision detected during execution: {exec_status}", file=sys.stderr, flush=True)
+                    if exec_status == MotionGenStatus.INVALID_START_STATE_SELF_COLLISION:
+                        print_collision_details(motion_gen, check_js_ordered.position.squeeze(0), robot_cfg, f"Execution step {cmd_idx}")
+            
             past_cmd = cmd_state.clone()
             # get full dof state
             art_action = ArticulationAction(

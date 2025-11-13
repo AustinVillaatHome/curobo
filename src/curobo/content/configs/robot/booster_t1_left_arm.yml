@@ -71,6 +71,7 @@ robot_cfg:
     extra_collision_spheres: {}
     collision_sphere_buffer: 
       {
+        "Trunk": -0.04,
         "default": 0.0,  # No buffer by default
         "left_hand_link": -0.01,  # Reduce sphere size for hand
         "left_base_link": -0.01,  # Reduce sphere size for gripper base
@@ -98,34 +99,34 @@ robot_cfg:
     
     self_collision_ignore:
       {
-        "Trunk": ["H1", "H2", "Waist", "AL1", "AL2", "AL3", "AL4", "AR1", "AR2", "AL5", "AL6"],
+        "Trunk": ["H1", "H2", "Waist", "AL1", "AL2", "AL3", "AR1", "AR2", "AR3"],
         "H1": ["H2", "AL1", "AL2", "AL3", "Trunk"],
         "H2": ["AL1", "AL2", "AL3", "AL4", "H1", "Trunk"],
         "Waist": ["AL1", "AL2", "AL3", "AL4", "Hip_Pitch_Left", "Hip_Pitch_Right", "Hip_Roll_Left", "Hip_Roll_Right"],
-        "AL1": ["AL2", "AL3", "AL4", "Waist", "Trunk", "H1", "H2"],
-        "AL2": ["AL3", "AL4", "AL5", "Waist", "Trunk", "H1", "H2"],
-        "AL3": ["AL4", "AL5", "AL6", "Waist", "Trunk", "H1", "H2"],
-        "AL4": ["AL5", "AL6", "left_hand_link", "Waist", "Trunk", "Hip_Pitch_Left"],
-        "AL5": ["AL6", "left_hand_link", "Trunk", "Hip_Pitch_Left", "Hip_Roll_Left"],
-        "AL6": ["left_hand_link", "attached_object", "Trunk", "Hip_Pitch_Left", "Hip_Roll_Left", "Hip_Yaw_Left", "left_base_link"],
-        "left_hand_link": ["attached_object", "left_base_link", "Trunk", "Hip_Yaw_Left", "Hip_Roll_Left", "Hip_Pitch_Left", "Shank_Left", "left_Link1", "left_Link11", "left_Link2", "left_Link22", "AL6"],
-        "left_base_link": ["left_Link1", "left_Link11", "left_Link2", "left_Link22", "AL5", "AL6", "left_hand_link", "Hip_Yaw_Left", "Shank_Left"],
-        "left_Link1": ["left_Link11", "left_Link2", "left_Link22", "left_base_link", "left_hand_link", "Hip_Yaw_Left", "Shank_Left"],
-        "left_Link11": ["left_Link1", "left_Link2", "left_Link22", "left_base_link", "left_hand_link", "Shank_Left", "Hip_Yaw_Left"],
-        "left_Link2": ["left_Link22", "left_base_link", "left_hand_link", "Hip_Yaw_Left", "Shank_Left"],
-        "left_Link22": ["left_Link2", "left_base_link", "Shank_Left"],
+        "AL1": ["AL2", "AL3", "AL4", "Trunk"],
+        "AL2": ["AL1", "AL3", "AL4", "AL5", "Waist", "Trunk", "H1", "H2"],
+        "AL3": ["AL2", "AL4"],
+        "AL4": ["AL3", "AL5", "AL6", "left_hand_link"],
+        "AL5": ["AL4", "AL6"],
+        "AL6": ["AL5", "left_hand_link", "left_base_link"],
+        "left_hand_link": ["left_base_link", "AL5", "AL6", "Shank_Left", "left_Link1", "left_Link11", "left_Link2", "left_Link22"],
+        "left_base_link": ["left_Link1", "left_Link11", "left_Link2", "left_Link22", "AL4", "AL5", "AL6", "left_hand_link"],
+        "left_Link1": ["left_Link11", "left_Link2", "left_Link22", "left_base_link", "left_hand_link"],
+        "left_Link11": ["left_Link1", "left_Link2", "left_Link22", "left_base_link", "left_hand_link"],
+        "left_Link2": ["left_Link22", "left_base_link", "left_hand_link"],
+        "left_Link22": ["left_Link2", "left_base_link", "left_hand_link"],
         # Right arm (locked) - allow left arm to pass near it when reaching across
-        "AR1": ["AR2", "AR3", "AL1", "AL2", "AL3"],
-        "AR2": ["AR3", "AR4", "AL2", "AL3", "AL4"],
-        "AR3": ["AR4", "AR5", "AL3", "AL4", "AL5"],
-        "AR4": ["AR5", "AR6", "AL4", "AL5", "AL6"],
-        "AR5": ["AR6", "right_hand_link", "AL5", "AL6"],
-        "AR6": ["right_hand_link", "AL6", "right_base_link"],
-        "right_hand_link": ["AL5", "AL6", "left_hand_link", "right_base_link", "right_Link1", "right_Link11", "right_Link2", "right_Link22"],
+        "AR1": ["AR2", "AR3", "AR4", "Trunk"],
+        "AR2": ["AR1","AR3", "AR4", "AR5", "Waist", "Trunk", "H1", "H2"],
+        "AR3": ["AR2", "AR4"],
+        "AR4": ["AR3", "AR5", "AR6"],
+        "AR5": ["AL4", "AL6"],
+        "AR6": ["AR5", "right_hand_link", "right_base_link"],
+        "right_hand_link": ["AR5", "AR6", "right_base_link", "right_Link1", "right_Link11", "right_Link2", "right_Link22"],
         "right_base_link": ["right_hand_link", "right_Link1", "right_Link11", "right_Link2", "right_Link22", "AR6"],
         "right_Link1": ["right_Link11", "right_Link2", "right_Link22", "right_base_link", "right_hand_link"],
         "right_Link11": ["right_Link1", "right_Link2", "right_Link22", "right_base_link", "right_hand_link"],
-        "right_Link2": ["right_Link22", "right_base_link", "right_hand_link"],
+        "right_Link2": ["right_Link1", "right_Link22", "right_base_link", "right_hand_link"],
         "right_Link22": ["right_Link2", "right_base_link"],
         "Hip_Pitch_Left": ["Hip_Roll_Left", "Hip_Yaw_Left"],
         "Hip_Roll_Left": ["Hip_Yaw_Left", "Hip_Pitch_Left", "Waist"],
@@ -138,10 +139,7 @@ robot_cfg:
         "Hip_Yaw_Right": ["Shank_Right", "Hip_Roll_Right", "Hip_Pitch_Right"],
         "Shank_Right": ["Ankle_Cross_Right", "right_foot_link", "Hip_Yaw_Right"],
         "Ankle_Cross_Right": ["right_foot_link"],
-        "right_foot_link": ["Shank_Right"],
-        "AR3": ["AR4", "AR5"],
-        "AR4": ["AR3", "AR5", "AR6"],
-        "AR6": ["right_hand_link", "AR4", "AR5"],
+        "right_foot_link": ["Shank_Right"]
       }
 
     # Buffer distances for self-collision checking (0.0 means no extra buffer)
